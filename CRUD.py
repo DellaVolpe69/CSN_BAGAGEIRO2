@@ -131,7 +131,7 @@ def rodape():
         """
         <div class="footer">
             © 2026 <b>Della Volpe</b> | Desenvolvido por
-            <a href="#">Raphael Chiavegati Oliveira</a>
+            <a href="#">Anderson Franco Ribeiro Junior</a>
         </div>
         """,
         unsafe_allow_html=True,
