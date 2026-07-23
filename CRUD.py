@@ -146,6 +146,44 @@ def titulo(texto: str):
 
 
 # ============================================================================
+# FUNÇÕES DE LEITURA
+# ============================================================================
+def carregar_tabela(nome_tabela):
+    # Lê todos os registros de uma tabela do Supabase (para exibição no topo).
+    supabase = ConectionSupaBase.conexao()
+    resposta = supabase.table(nome_tabela).select("*").execute()
+    return resposta.data or []
+
+
+def valefretes_ja_existentes(valefretes, periodo):
+    # Retorna os vale-fretes que JÁ estão cadastrados no mesmo período.
+    # Query filtrada por período + lista de vale-fretes (não puxa a tabela toda).
+    supabase = ConectionSupaBase.conexao()
+    resposta = (
+        supabase.table("ValeFreteCSN")
+        .select("NUM_VALE_FRETE")
+        .eq("PERIODO", str(periodo))
+        .in_("NUM_VALE_FRETE", valefretes)
+        .execute()
+    )
+    return {linha["NUM_VALE_FRETE"] for linha in (resposta.data or [])}
+
+
+def destino_ja_existe(destino, periodo):
+    # True se o destino já estiver cadastrado no mesmo período (tela de rotas).
+    supabase = ConectionSupaBase.conexao()
+    resposta = (
+        supabase.table("Autorizacao_CSN")
+        .select("DESTINO")
+        .eq("PERIODO", str(periodo))
+        .eq("DESTINO", destino)
+        .limit(1)
+        .execute()
+    )
+    return bool(resposta.data)
+
+
+# ============================================================================
 # FUNÇÕES DE GRAVAÇÃO
 # ============================================================================
 def salvar_destinos_mais_viagem(valefretes, veiculo, destino, periodo):
@@ -223,6 +261,17 @@ if st.session_state.pagina == "menu":
 elif st.session_state.pagina == "destinos":
     titulo("🚛 Destinos com Mais de 1 Viagem")
 
+    # Tabela do que já está cadastrado (lida do banco)
+    st.markdown("<h4 style='color:#EDEBE6;'>Já cadastrado</h4>", unsafe_allow_html=True)
+    try:
+        registros = carregar_tabela("ValeFreteCSN")
+        if registros:
+            st.dataframe(registros, use_container_width=True, hide_index=True)
+        else:
+            st.info("Nenhum registro cadastrado ainda.")
+    except Exception as e:
+        st.error(f"❌ Erro ao carregar tabela: {e}")
+
     st.markdown("<h4 style='color:#EDEBE6;'>Vale Fretes</h4>", unsafe_allow_html=True)
     c1, c2, c3 = st.columns(3)
     with c1:
@@ -244,16 +293,25 @@ elif st.session_state.pagina == "destinos":
         with b2:
             if st.button("Salvar", use_container_width=True):
                 valefretes = [vf1.strip(), vf2.strip(), vf3.strip()]
+                preenchidos = [v for v in valefretes if v]
                 # Regra: página é "mais de 1 viagem" -> exige ao menos 2 vale-fretes.
-                # Ajuste o número se sua regra for outra.
-                if sum(bool(v) for v in valefretes) < 2:
+                if len(preenchidos) < 2:
                     st.warning("⚠️ Preencha ao menos 2 Vale Fretes.")
                 else:
                     try:
-                        registro = salvar_destinos_mais_viagem(valefretes, veiculo, destino, periodo)
-                        st.session_state.registro = registro
-                        st.session_state.pagina = "sucesso"
-                        st.rerun()
+                        # Regra: nenhum vale-frete pode já existir no mesmo período
+                        duplicados = valefretes_ja_existentes(preenchidos, periodo)
+                        if duplicados:
+                            lista = ", ".join(sorted(duplicados))
+                            st.error(
+                                f"❌ Vale Frete já cadastrado neste período: {lista}. "
+                                "Nenhum registro foi salvo."
+                            )
+                        else:
+                            registro = salvar_destinos_mais_viagem(valefretes, veiculo, destino, periodo)
+                            st.session_state.registro = registro
+                            st.session_state.pagina = "sucesso"
+                            st.rerun()
                     except Exception as e:
                         st.error(f"❌ Erro ao salvar no Supabase: {e}")
 
@@ -262,6 +320,17 @@ elif st.session_state.pagina == "destinos":
 # ----------------------------------------------------------------------------
 elif st.session_state.pagina == "rotas":
     titulo("🚧 Rotas sem liberação")
+
+    # Tabela do que já está cadastrado (lida do banco)
+    st.markdown("<h4 style='color:#EDEBE6;'>Já cadastrado</h4>", unsafe_allow_html=True)
+    try:
+        registros = carregar_tabela("Autorizacao_CSN")
+        if registros:
+            st.dataframe(registros, use_container_width=True, hide_index=True)
+        else:
+            st.info("Nenhum registro cadastrado ainda.")
+    except Exception as e:
+        st.error(f"❌ Erro ao carregar tabela: {e}")
 
     destino = st.selectbox("Destino", DESTINOS)
     periodo = st.date_input("Período (não liberado)", date.today())
@@ -274,10 +343,17 @@ elif st.session_state.pagina == "rotas":
         with b2:
             if st.button("Salvar", use_container_width=True):
                 try:
-                    registro = salvar_rotas_sem_liberacao(destino, periodo)
-                    st.session_state.registro = registro
-                    st.session_state.pagina = "sucesso"
-                    st.rerun()
+                    # Regra: destino não pode já existir no mesmo período
+                    if destino_ja_existe(destino, periodo):
+                        st.error(
+                            f"❌ Destino '{destino}' já cadastrado neste período. "
+                            "Nenhum registro foi salvo."
+                        )
+                    else:
+                        registro = salvar_rotas_sem_liberacao(destino, periodo)
+                        st.session_state.registro = registro
+                        st.session_state.pagina = "sucesso"
+                        st.rerun()
                 except Exception as e:
                     st.error(f"❌ Erro ao salvar no Supabase: {e}")
 
