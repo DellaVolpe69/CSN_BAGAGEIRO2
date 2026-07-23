@@ -3,6 +3,7 @@ from datetime import date
 import subprocess
 import sys
 from pathlib import Path
+from requests_oauthlib import OAuth2Session
 
 # ============================================================================
 # CONFIGURAÇÃO GERAL
@@ -37,6 +38,127 @@ if str(modulos_dir) not in sys.path:
     sys.path.insert(0, str(modulos_dir))
 
 from Modulos import ConectionSupaBase
+
+# ============================================================================
+# AUTENTICAÇÃO DO AZURE
+# ============================================================================
+client_id = st.secrets["AZURE_CLIENT_ID"]
+client_secret = st.secrets["AZURE_CLIENT_SECRET"]
+redirect_uri = st.secrets["AZURE_REDIRECT_URI"]
+authorization_base_url = st.secrets["AZURE_AUTH_URL"]
+token_url = st.secrets["AZURE_TOKEN_URL"]
+scope = [
+    "openid",
+    "email",
+    "profile",
+    "https://graph.microsoft.com/User.Read",
+]
+
+if "token" not in st.session_state:
+    st.session_state["token"] = None
+
+query_params = st.query_params
+if "code" in query_params and st.session_state["token"] is None:
+    code = query_params["code"]
+    azure = OAuth2Session(client_id, redirect_uri=redirect_uri, scope=scope)
+    try:
+        token = azure.fetch_token(
+            token_url,
+            client_secret=client_secret,
+            code=code
+        )
+        st.session_state["token"] = token
+        st.query_params.clear()
+        st.rerun()
+    except Exception as e:
+        if "Scope has changed" in str(e):
+            st.warning("Escopos alterados. É necessário iniciar um novo login.")
+            st.session_state["token"] = None
+            st.query_params.clear()
+            azure = OAuth2Session(client_id, scope=scope, redirect_uri=redirect_uri)
+            authorization_url, state = azure.authorization_url(authorization_base_url, prompt="select_account")
+            st.link_button("🔐 Iniciar novo login", authorization_url)
+            st.stop()
+        else:
+            st.error(f"Erro ao obter token: {e}")
+            st.stop()
+
+if st.session_state["token"] is None:
+    azure = OAuth2Session(client_id, scope=scope, redirect_uri=redirect_uri)
+    authorization_url, state = azure.authorization_url(authorization_base_url, prompt="select_account")
+    st.markdown(f"""
+        <style>
+        .stApp {{
+            background: linear-gradient(rgba(0,0,0,0.7), rgba(0,0,0,0.7)),
+                url("{url_imagem}");
+            background-size: cover;
+        }}
+        </style>
+    """, unsafe_allow_html=True)
+    c1, c2, c3 = st.columns([1, 2, 1])
+    with c2:
+        st.image(url_logo, caption=None, use_column_width=False)
+    esp1, centro, esp2 = st.columns([1, 1, 1])
+    with centro:
+        st.markdown(
+            """
+            <style>
+            .custom-login-btn {
+                background-color: #FF5D01 !important;
+                color: white !important;
+                border: 2px solid white !important;
+                padding: 0.6em 1.2em;
+                border-radius: 10px !important;
+                font-size: 1rem;
+                font-weight: 500;
+                cursor: pointer;
+                transition: 0.2s ease;
+                text-decoration: none !important;
+                display: inline-block;
+            }
+            .custom-login-btn:hover {
+                background-color: white !important;
+                color: #FF5D01 !important;
+                transform: scale(1.03);
+                border: 2px solid #FF5D01 !important;
+            }
+            .center-container {
+                text-align: center;
+                margin-top: 10px;
+            }
+            </style>
+            """,
+            unsafe_allow_html=True
+        )
+        st.markdown(
+            f"""
+            <div class="center-container">
+                <a href="{authorization_url}" class="custom-login-btn">
+                    🔐 Login com Microsoft
+                </a>
+            </div>
+            """,
+            unsafe_allow_html=True
+        )
+    st.stop()
+
+# --- Usuário autenticado: busca os dados do usuário ---
+azure = OAuth2Session(client_id, token=st.session_state["token"])
+me_resp = azure.get("https://graph.microsoft.com/v1.0/me")
+if me_resp.status_code != 200:
+    st.error(f"Falha ao obter perfil do usuário ({me_resp.status_code}): {me_resp.text}")
+    st.stop()
+user_info = me_resp.json()
+user_name = user_info.get("displayName", "Usuário")
+user_email = (
+    user_info.get("mail")
+    or user_info.get("userPrincipalName")
+    or "desconhecido"
+)
+if not isinstance(user_email, str) or not user_email.lower().endswith("@dellavolpe.com.br"):
+    st.error("Acesso restrito a usuários @dellavolpe.com.br. Não foi possível validar seu e-mail.")
+    st.stop()
+
 # ============================================================================
 # LISTAS DE OPÇÕES
 # ============================================================================
@@ -148,10 +270,10 @@ def titulo(texto: str):
 # ============================================================================
 # FUNÇÕES DE LEITURA
 # ============================================================================
-def carregar_tabela(nome_tabela):
-    # Lê todos os registros de uma tabela do Supabase (para exibição no topo).
+def carregar_tabela(nome_tabela, colunas):
+    # Lê apenas as colunas desejadas do Supabase (exclui id/created_at na origem).
     supabase = ConectionSupaBase.conexao()
-    resposta = supabase.table(nome_tabela).select("*").execute()
+    resposta = supabase.table(nome_tabela).select(colunas).execute()
     return resposta.data or []
 
 
@@ -186,15 +308,16 @@ def destino_ja_existe(destino, periodo):
 # ============================================================================
 # FUNÇÕES DE GRAVAÇÃO
 # ============================================================================
-def salvar_destinos_mais_viagem(valefretes, veiculo, destino, periodo):
-    # Tabela ValeFreteCSN: NUM_VALE_FRETE, VEICULO, DESTINO, PERIODO
-    # Uma linha por Vale Frete preenchido (mesmo veículo/destino/período).
+def salvar_destinos_mais_viagem(valefretes, veiculo, destino, periodo, usuario):
+    # Tabela ValeFreteCSN: NUM_VALE_FRETE, VEICULO, DESTINO, PERIODO, USUARIO_CRIACAO
+    # Uma linha por Vale Frete preenchido (mesmo veículo/destino/período/usuário).
     linhas = [
         {
             "NUM_VALE_FRETE": vf,
             "VEICULO": veiculo,
             "DESTINO": destino,
             "PERIODO": str(periodo),
+            "USUARIO_CRIACAO": usuario,
         }
         for vf in valefretes if vf
     ]
@@ -203,11 +326,12 @@ def salvar_destinos_mais_viagem(valefretes, veiculo, destino, periodo):
     return linhas
 
 
-def salvar_rotas_sem_liberacao(destino, periodo):
-    # Tabela Autorizacao_CSN: DESTINO, PERIODO (sem veículo)
+def salvar_rotas_sem_liberacao(destino, periodo, usuario):
+    # Tabela Autorizacao_CSN: DESTINO, PERIODO, USUARIO_CRIACAO (sem veículo)
     registro = {
         "DESTINO": destino,
         "PERIODO": str(periodo),
+        "USUARIO_CRIACAO": usuario,
     }
     supabase = ConectionSupaBase.conexao()
     supabase.table("Autorizacao_CSN").insert(registro).execute()
@@ -264,7 +388,7 @@ elif st.session_state.pagina == "destinos":
     # Tabela do que já está cadastrado (lida do banco)
     st.markdown("<h4 style='color:#EDEBE6;'>Já cadastrado</h4>", unsafe_allow_html=True)
     try:
-        registros = carregar_tabela("ValeFreteCSN")
+        registros = carregar_tabela("ValeFreteCSN", "NUM_VALE_FRETE, VEICULO, DESTINO, PERIODO, USUARIO_CRIACAO")
         if registros:
             st.dataframe(registros, use_container_width=True, hide_index=True)
         else:
@@ -308,7 +432,7 @@ elif st.session_state.pagina == "destinos":
                                 "Nenhum registro foi salvo."
                             )
                         else:
-                            registro = salvar_destinos_mais_viagem(valefretes, veiculo, destino, periodo)
+                            registro = salvar_destinos_mais_viagem(valefretes, veiculo, destino, periodo, user_email)
                             st.session_state.registro = registro
                             st.session_state.pagina = "sucesso"
                             st.rerun()
@@ -324,7 +448,7 @@ elif st.session_state.pagina == "rotas":
     # Tabela do que já está cadastrado (lida do banco)
     st.markdown("<h4 style='color:#EDEBE6;'>Já cadastrado</h4>", unsafe_allow_html=True)
     try:
-        registros = carregar_tabela("Autorizacao_CSN")
+        registros = carregar_tabela("Autorizacao_CSN", "DESTINO, PERIODO, USUARIO_CRIACAO")
         if registros:
             st.dataframe(registros, use_container_width=True, hide_index=True)
         else:
@@ -350,7 +474,7 @@ elif st.session_state.pagina == "rotas":
                             "Nenhum registro foi salvo."
                         )
                     else:
-                        registro = salvar_rotas_sem_liberacao(destino, periodo)
+                        registro = salvar_rotas_sem_liberacao(destino, periodo, user_email)
                         st.session_state.registro = registro
                         st.session_state.pagina = "sucesso"
                         st.rerun()
