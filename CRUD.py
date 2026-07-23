@@ -17,15 +17,13 @@ st.set_page_config(
 # --- Imagens do tema (mesmas do app base) ---
 url_imagem = "https://raw.githubusercontent.com/DellaVolpe69/Images/main/AppBackground02.png"
 url_logo = "https://raw.githubusercontent.com/DellaVolpe69/Images/main/DellaVolpeLogoBranco.png"
-fox_image = "https://raw.githubusercontent.com/DellaVolpe69/Images/main/Foxy4.png"
 
-# ================================================
+# ============================================================================
 # CARREGAR MÓDULOS E PARQUETS
-# ================================================modulos_dir = Path(__file__).parent / "Modulos"
-
+# ============================================================================
 modulos_dir = Path(__file__).parent / "Modulos"
 
-# # Se o diretório ainda não existir, faz o clone direto do GitHub
+# Se o diretório ainda não existir, faz o clone direto do GitHub
 if not modulos_dir.exists():
     print("📥 Clonando repositório Modulos do GitHub...")
     subprocess.run([
@@ -287,23 +285,14 @@ elif st.session_state.pagina == "rotas":
 # PÁGINA DE SUCESSO (oculta)
 # ----------------------------------------------------------------------------
 elif st.session_state.pagina == "sucesso":
-    st.markdown("<h3 style='color:white;'>🎈 Cadastro efetuado!</h3>", unsafe_allow_html=True)
-    st.markdown(
-        f"""
-        <div style="display:flex; justify-content:center; width:100%;">
-            <img src="{fox_image}" alt="Foxy"
-                 style="width:min(400px,80vw); height:auto; margin-bottom:10px;">
-        </div>
-        """,
-        unsafe_allow_html=True,
-    )
+    st.markdown("<h3 style='color:white;'>Cadastro efetuado!</h3>", unsafe_allow_html=True)
     st.success("✅ Registro salvo com sucesso!")
 
-    # Mostra o que foi gravado
+    # Mostra o que foi gravado em formato de tabela
     if "registro" in st.session_state:
-        st.json(st.session_state.registro)
-
-    st.balloons()
+        registro = st.session_state.registro
+        dados = registro if isinstance(registro, list) else [registro]
+        st.dataframe(dados, use_container_width=True, hide_index=True)
 
     _, centro, _ = st.columns([1, 1, 1])
     with centro:
