@@ -148,10 +148,10 @@ def titulo(texto: str):
 # ============================================================================
 # FUNÇÕES DE LEITURA
 # ============================================================================
-def carregar_tabela(nome_tabela):
-    # Lê todos os registros de uma tabela do Supabase (para exibição no topo).
+def carregar_tabela(nome_tabela, colunas):
+    # Lê apenas as colunas desejadas do Supabase (exclui id/created_at na origem).
     supabase = ConectionSupaBase.conexao()
-    resposta = supabase.table(nome_tabela).select("*").execute()
+    resposta = supabase.table(nome_tabela).select(colunas).execute()
     return resposta.data or []
 
 
@@ -264,7 +264,7 @@ elif st.session_state.pagina == "destinos":
     # Tabela do que já está cadastrado (lida do banco)
     st.markdown("<h4 style='color:#EDEBE6;'>Já cadastrado</h4>", unsafe_allow_html=True)
     try:
-        registros = carregar_tabela("ValeFreteCSN")
+        registros = carregar_tabela("ValeFreteCSN", "NUM_VALE_FRETE, VEICULO, DESTINO, PERIODO")
         if registros:
             st.dataframe(registros, use_container_width=True, hide_index=True)
         else:
@@ -324,7 +324,7 @@ elif st.session_state.pagina == "rotas":
     # Tabela do que já está cadastrado (lida do banco)
     st.markdown("<h4 style='color:#EDEBE6;'>Já cadastrado</h4>", unsafe_allow_html=True)
     try:
-        registros = carregar_tabela("Autorizacao_CSN")
+        registros = carregar_tabela("Autorizacao_CSN", "DESTINO, PERIODO")
         if registros:
             st.dataframe(registros, use_container_width=True, hide_index=True)
         else:
