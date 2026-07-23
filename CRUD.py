@@ -25,18 +25,18 @@ fox_image = "https://raw.githubusercontent.com/DellaVolpe69/Images/main/Foxy4.pn
 
 modulos_dir = Path(__file__).parent / "Modulos"
 
-# Se o diretório ainda não existir, faz o clone direto do GitHub
-if not modulos_dir.exists():
-    print("📥 Clonando repositório Modulos do GitHub...")
-    subprocess.run([
-        "git", "clone",
-        "https://github.com/DellaVolpe69/Modulos.git",
-        str(modulos_dir)
-    ], check=True)
+# # Se o diretório ainda não existir, faz o clone direto do GitHub
+# if not modulos_dir.exists():
+#     print("📥 Clonando repositório Modulos do GitHub...")
+#     subprocess.run([
+#         "git", "clone",
+#         "https://github.com/DellaVolpe69/Modulos.git",
+#         str(modulos_dir)
+#     ], check=True)
 
-# Garante que o diretório está no caminho de importação
-if str(modulos_dir) not in sys.path:
-    sys.path.insert(0, str(modulos_dir))
+# # Garante que o diretório está no caminho de importação
+# if str(modulos_dir) not in sys.path:
+#     sys.path.insert(0, str(modulos_dir))
 
 from Modulos import ConectionSupaBase
 # ============================================================================
