@@ -19,7 +19,7 @@ url_imagem = "https://raw.githubusercontent.com/DellaVolpe69/Images/main/AppBack
 url_logo = "https://raw.githubusercontent.com/DellaVolpe69/Images/main/DellaVolpeLogoBranco.png"
 fox_image = "https://raw.githubusercontent.com/DellaVolpe69/Images/main/Foxy4.png"
 
-================================================
+# ================================================
 # CARREGAR MÓDULOS E PARQUETS
 # ================================================
 modulos_dir = Path(__file__).parent / "Modulos"
